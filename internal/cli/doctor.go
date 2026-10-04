@@ -57,6 +57,28 @@ func doctorHub(cfg *config.Hub) int {
 		okf("port forwarding is automatic (the node announces its ports on connect)")
 	}
 
+	// Local self-probe: is our own TLS listener actually alive on this box?
+	probeCfg := &config.Node{
+		Version: 1,
+		Role:    "node",
+		Host:    "127.0.0.1",
+		Port:    cfg.TLSPort,
+		SNI:     cfg.SNI,
+		Key:     cfg.Key,
+		FP:      crypto.Fingerprint(cert),
+		Pool:    1,
+		Bind:    "127.0.0.1",
+	}
+	if err := node.Probe(probeCfg); err != nil {
+		errf("local TLS self-probe failed: %v", err)
+		fmt.Printf("  %s\n", warn("the hub daemon is NOT running on this server (or another program took its port)"))
+		fmt.Printf("  %s\n", warn("start it:  sudo silent hub    or install it:  sudo silent install"))
+		fmt.Printf("  %s\n", warn("check who owns the port:  sudo ss -tlnp | grep :"+strconv.Itoa(cfg.TLSPort)))
+		code = 1
+	} else {
+		okf("local TLS self-probe OK — the hub is serving on :%d", cfg.TLSPort)
+	}
+
 	if hint := clockCheck(); hint != "" {
 		fmt.Printf("  %s\n", warn(hint))
 	}
@@ -80,8 +102,21 @@ func doctorNode(cfg *config.Node) int {
 
 	if err := node.Probe(cfg); err != nil {
 		errf("inner handshake: %v", err)
-		fmt.Printf("  %s\n", warn("If the error mentions clock skew: sync both servers with NTP (timedatectl set-ntp true)"))
-		fmt.Printf("  %s\n", warn("If it says fingerprint mismatch: the hub config or token changed — run 'silent token' on the hub and re-run setup-node"))
+		msg := err.Error()
+		switch {
+		case strings.Contains(msg, "EOF"):
+			fmt.Printf("  %s\n", warn("TCP reached the Iran server but the TLS handshake was cut mid-way. On the IRAN server check:"))
+			fmt.Printf("  %s\n", warn("  1) sudo systemctl status silent-hub      — is the hub actually running?"))
+			fmt.Printf("  %s\n", warn("  2) sudo ss -tlnp | grep :"+strconv.Itoa(cfg.Port)+"     — the port must belong to 'silent', not nginx/x-ui"))
+			fmt.Printf("  %s\n", warn("  3) openssl s_client -connect "+addr+" -servername "+cfg.SNI))
+			fmt.Printf("  %s\n", warn("     a cert with issuer O=Silent shows up → path is fine; EOF again → the ISP filter is likely killing the handshake: change the tunnel port or SNI on the hub and re-run setup-node with the fresh token"))
+		case strings.Contains(msg, "clock skew"):
+			fmt.Printf("  %s\n", warn("sync both servers with NTP: timedatectl set-ntp true"))
+		case strings.Contains(msg, "fingerprint mismatch"):
+			fmt.Printf("  %s\n", warn("the hub config or token changed — run 'silent token' on the hub and re-run setup-node"))
+		default:
+			fmt.Printf("  %s\n", warn("check that the hub daemon is running on the Iran server (systemctl status silent-hub)"))
+		}
 		return 1
 	}
 	okf("auth and inner encryption OK — the tunnel is ready")
