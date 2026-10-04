@@ -47,12 +47,12 @@ func colorToken(t string) string { return color.New(color.Bold, color.FgHiWhite)
 func cmdToken() int {
 	cfg, err := config.LoadHub(config.HubPath())
 	if err != nil {
-		errf("خواندن کانفیگ هاب: %v", err)
+		errf("read hub config: %v", err)
 		return 1
 	}
 	token, err := tokenFor(cfg)
 	if err != nil {
-		errf("ساخت توکن: %v", err)
+		errf("build token: %v", err)
 		return 1
 	}
 	fmt.Println(colorToken(token))
@@ -64,9 +64,9 @@ func tokenFromInput(flagVal string) (*crypto.Pairing, error) {
 	raw := strings.TrimSpace(flagVal)
 	if raw == "" {
 		if !isTTY() {
-			return nil, fmt.Errorf("توکن لازم است: --token st1_...")
+			return nil, fmt.Errorf("token required: --token st1_...")
 		}
-		v, err := Ask("توکن Pairing را از سرور ایران اینجا پیست کن", "")
+		v, err := Ask("Paste the pairing token from the Iran server", "")
 		if err != nil {
 			return nil, uiErr(err)
 		}

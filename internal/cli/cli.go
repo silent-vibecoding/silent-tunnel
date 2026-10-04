@@ -44,31 +44,31 @@ func Run(args []string) int {
 		usage()
 		return 0
 	default:
-		fmt.Printf("دستور ناشناخته: %s\n\n", args[0])
+		fmt.Printf("unknown command: %s\n\n", args[0])
 		usage()
 		return 1
 	}
 }
 
 func usage() {
-	fmt.Print(`Silent Tunnel — تونل اختصاصی ایران ⇄ خارج
+	fmt.Print(`Silent Tunnel — disguised reverse tunnel for Iran <-> abroad setups
 
-استفاده: silent [دستور]
+Usage: silent [command]
 
-  بدون دستور       منوی تعاملی
-  setup-hub        راه‌اندازی سرور ایران (ساخت کانفیگ، گواهی و توکن pairing)
-  setup-node       راه‌اندازی سرور خارج با توکن pairing
-  hub              اجرای دیمن هاب (ایران)
-  node             اجرای دیمن نود (خارج)
-  status           وضعیت زنده‌ی دیمن در حال اجرا
-  doctor           تست سلامت و عیب‌یابی
-  install          نصب سرویس systemd (اجرای خودکار پس از ریبوت)
-  uninstall        حذف کامل سرویس
-  token            نمایش دوباره‌ی توکن pairing
+  (no command)     interactive menu
+  setup-hub        set up the Iran server (config, certificate, pairing token)
+  setup-node       set up the abroad server from a pairing token
+  hub              run the hub daemon (Iran)
+  node             run the node daemon (abroad)
+  status           live status of the running daemon
+  doctor           health check and troubleshooting
+  install          install the systemd service (start on boot)
+  uninstall        remove the service
+  token            print the pairing token again
 
-مثال:
-  sudo silent                      # منو
-  sudo silent setup-hub            # ویزارد ایران
+Examples:
+  sudo silent                      # menu
+  sudo silent setup-hub            # Iran wizard
   sudo silent setup-node --token st1_...
 `)
 }

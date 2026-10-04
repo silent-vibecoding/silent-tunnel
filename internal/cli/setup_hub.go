@@ -22,7 +22,7 @@ import (
 // With flags it runs headless; interactively it walks through a wizard.
 func cmdSetupHub(args []string) int {
 	fs := flag.NewFlagSet("setup-hub", flag.ContinueOnError)
-	fs.Usage = func() { fmt.Println("استفاده: silent setup-hub [--host IP] [--port 443] [--sni domain] [--maps 2087,44301|2087=8443,...] [--config path]") }
+	fs.Usage = func() { fmt.Println("usage: silent setup-hub [--host IP] [--port 443] [--sni domain] [--maps 2087,44301|2087=8443,...] [--config path]") }
 	host := fs.String("host", "", "public IP or domain of this server")
 	port := fs.Int("port", 0, "TLS port the node dials (default 443)")
 	sni := fs.String("sni", "", "fake SNI shown to DPI (default cloudflare.com)")
@@ -40,7 +40,7 @@ func cmdSetupHub(args []string) int {
 		}
 		h, p, s, m, err := hubWizard(*host, *port, *sni, *maps)
 		if err != nil {
-			errf("ویزارد لغو شد: %v", err)
+			errf("wizard cancelled: %v", err)
 			return 1
 		}
 		*host, *port, *sni, *maps = h, p, s, m
@@ -53,7 +53,7 @@ func cmdSetupHub(args []string) int {
 	}
 	if *host == "" {
 		*host = detectLocalIP()
-		tipf("آی‌پی عمومی شناسایی نشد؛ از آی‌پی محلی %s استفاده می‌شود — بعداً در کانفیگ درستش کن", *host)
+		tipf("could not detect the public IP; using the local IP %s — fix it in the config later", *host)
 	}
 
 	listen, mapping, err := parsePorts(*maps)
@@ -64,24 +64,24 @@ func cmdSetupHub(args []string) int {
 
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
-		errf("تولید کلید: %v", err)
+		errf("generate key: %v", err)
 		return 1
 	}
 
 	base := config.BaseDir()
 	if err := os.MkdirAll(base, 0o700); err != nil {
-		errf("ساخت پوشه‌ی کانفیگ: %v", err)
+		errf("create config dir: %v", err)
 		return 1
 	}
 	certPath := filepath.Join(base, "cert.pem")
 	keyPath := filepath.Join(base, "cert.key")
 	cert, err := crypto.GenerateSelfSigned(*sni)
 	if err != nil {
-		errf("ساخت گواهی: %v", err)
+		errf("generate certificate: %v", err)
 		return 1
 	}
 	if err := crypto.SaveCert(cert, certPath, keyPath); err != nil {
-		errf("ذخیره‌ی گواهی: %v", err)
+		errf("save certificate: %v", err)
 		return 1
 	}
 
@@ -106,69 +106,69 @@ func cmdSetupHub(args []string) int {
 		path = config.HubPath()
 	}
 	if err := config.Save(path, cfg); err != nil {
-		errf("ذخیره‌ی کانفیگ: %v", err)
+		errf("save config: %v", err)
 		return 1
 	}
 
 	token, err := tokenForCert(cfg, cert)
 	if err != nil {
-		errf("ساخت توکن: %v", err)
+		errf("build token: %v", err)
 		return 1
 	}
 
 	fmt.Println()
-	okf("هاب روی %s ساخته شد (%s)", path, subtle("ایران"))
-	fmt.Printf("  پورت تونل: %d    SNI: %s\n", cfg.TLSPort, cfg.SNI)
+	okf("hub created at %s (%s)", path, subtle("Iran"))
+	fmt.Printf("  Tunnel port: %d    SNI: %s\n", cfg.TLSPort, cfg.SNI)
 	if len(cfg.Maps) > 0 {
 		for _, m := range cfg.Maps {
-			fmt.Printf("  فوروارد: :%d → نود:%d\n", m[0], m[1])
+			fmt.Printf("  Forward: :%d -> node:%d\n", m[0], m[1])
 		}
 	} else {
-		fmt.Printf("  فوروارد (هم‌نام): %s\n", intsString(cfg.Listen))
+		fmt.Printf("  Forward (same-port): %s\n", intsString(cfg.Listen))
 	}
 	fmt.Println()
-	tipf("توکن Pairing — روی سرور خارج در ویزارد یا setup-node پیستش کن:")
+	tipf("Pairing token — paste it into the wizard or 'setup-node' on the abroad server:")
 	fmt.Println()
 	fmt.Println(colorToken(token))
 	fmt.Println()
-	tipf("پورت‌ها را در فایروال باز کن:")
+	tipf("Open these ports in the firewall:")
 	for _, p := range append([]int{cfg.TLSPort}, listen...) {
 		fmt.Printf("    sudo ufw allow %d/tcp\n", p)
 	}
-	tipf("اجرا:  sudo silent hub   (یا silent → گزینه‌ی install برای سرویس systemd)")
+	tipf("Run:  sudo silent hub   (or 'silent install' for the systemd service)")
 	return 0
 }
 
 func hubWizard(host string, port int, sni, maps string) (string, int, string, string, error) {
 	fmt.Println()
-	tipf("ویزارد راه‌اندازی هاب (ایران)")
+	tipf("Hub (Iran) setup wizard")
 	if host == "" {
 		detected := detectPublicIP()
 		if detected == "" {
 			detected = detectLocalIP()
 		}
-		h, err := Ask("آی‌پی عمومی یا دامنه‌ی این سرور", detected)
+		h, err := Ask("Public IP or domain of this server", detected)
 		if err != nil {
 			return "", 0, "", "", uiErr(err)
 		}
 		host = h
 	}
 	if port == 0 {
-		p, err := AskInt("پورت TLS که نود به آن وصل می‌شود", 443, 1, 65535)
+		p, err := AskInt("TLS port for the node to dial", 443, 1, 65535)
 		if err != nil {
 			return "", 0, "", "", uiErr(err)
 		}
 		port = p
 	}
 	if sni == "" {
-		s, err := Ask("SNI جعلی (دامنه‌ای که DPI می‌بیند)", "cloudflare.com")
+		s, err := Ask("Fake SNI (the domain DPI will see)", "cloudflare.com")
 		if err != nil {
 			return "", 0, "", "", uiErr(err)
 		}
 		sni = s
 	}
 	if maps == "" {
-		m, err := Ask("پورت‌های فوروارد با کاما (مثل 44301,2087) — یا نگاشت مثل 44301=8443", "44301")
+		m, err := Ask("Ports to forward, comma-separated (e.g. 44301,2087) — or mapped like 44301=8443", "44301")
 		if err != nil {
 			return "", 0, "", "", uiErr(err)
 		}
@@ -183,7 +183,7 @@ func hubWizard(host string, port int, sni, maps string) (string, int, string, st
 func parsePorts(s string) (listen []int, maps [][2]int, err error) {
 	parts := strings.Split(strings.TrimSpace(s), ",")
 	if len(parts) == 0 || parts[0] == "" {
-		return nil, nil, fmt.Errorf("حداقل یک پورت لازم است")
+		return nil, nil, fmt.Errorf("at least one port is required")
 	}
 	mapped := false
 	for _, p := range parts {
@@ -196,22 +196,22 @@ func parsePorts(s string) (listen []int, maps [][2]int, err error) {
 			l, e1 := strconv.Atoi(strings.TrimSpace(a))
 			r, e2 := strconv.Atoi(strings.TrimSpace(b))
 			if e1 != nil || e2 != nil {
-				return nil, nil, fmt.Errorf("نگاشت نامعتبر: %s", p)
+				return nil, nil, fmt.Errorf("invalid mapping: %s", p)
 			}
 			maps = append(maps, [2]int{l, r})
 			continue
 		}
 		n, e := strconv.Atoi(p)
 		if e != nil || n < 1 || n > 65535 {
-			return nil, nil, fmt.Errorf("پورت نامعتبر: %s", p)
+			return nil, nil, fmt.Errorf("invalid port: %s", p)
 		}
 		listen = append(listen, n)
 	}
 	if mapped && len(listen) > 0 {
-		return nil, nil, fmt.Errorf("فرمت مخلوط مجاز نیست: همه را یا با = یا بدون = بنویس")
+		return nil, nil, fmt.Errorf("mixed format is not allowed: use = for all entries or for none")
 	}
 	if len(listen) == 0 && len(maps) == 0 {
-		return nil, nil, fmt.Errorf("حداقل یک پورت لازم است")
+		return nil, nil, fmt.Errorf("at least one port is required")
 	}
 	if mapped {
 		return nil, maps, nil

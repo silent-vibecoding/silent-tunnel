@@ -33,26 +33,26 @@ WantedBy=multi-user.target
 // cmdInstall registers a systemd service for the configured role.
 func cmdInstall(args []string) int {
 	if runtime.GOOS == "windows" {
-		fmt.Println("روی ویندوز systemd نیست. دو راه دارید:")
-		fmt.Println("  1) اجرای دستی در ترمینال:  silent.exe hub   یا   silent.exe node")
-		fmt.Println(`  2) سرویس ویندوز (NSSM):  nssm install SilentTunnel "C:\path\silent.exe" hub`)
-		fmt.Println(`     یا اجرای خودکار موقع بوت:  schtasks /Create /SC ONSTART /TN SilentTunnel /RU SYSTEM /TR "C:\path\silent.exe hub"`)
+		fmt.Println("systemd is not available on Windows. Two options:")
+		fmt.Println("  1) run it manually in a terminal:  silent.exe hub   or   silent.exe node")
+		fmt.Println(`  2) a Windows service (NSSM):  nssm install SilentTunnel "C:\path\silent.exe" hub`)
+		fmt.Println(`     or start on boot:  schtasks /Create /SC ONSTART /TN SilentTunnel /RU SYSTEM /TR "C:\path\silent.exe hub"`)
 		return 1
 	}
 	if os.Geteuid() != 0 {
-		errf("برای نصب سرویس root لازم است (sudo silent install)")
+		errf("root is required to install the service (sudo silent install)")
 		return 1
 	}
 
 	role, _ := detectRole()
 	if role == "" {
-		errf("کانفیگی پیدا نشد — اول setup-hub یا setup-node را اجرا کن")
+		errf("no config found — run setup-hub or setup-node first")
 		return 1
 	}
 
 	self, err := os.Executable()
 	if err != nil {
-		errf("مسیر باینری: %v", err)
+		errf("binary path: %v", err)
 		return 1
 	}
 	self, _ = filepath.Abs(self)
@@ -60,11 +60,11 @@ func cmdInstall(args []string) int {
 	if self != target {
 		b, err := os.ReadFile(self)
 		if err != nil {
-			errf("کپی باینری: %v", err)
+			errf("copy binary: %v", err)
 			return 1
 		}
 		if err := os.WriteFile(target, b, 0o755); err != nil {
-			errf("نوشتن %s: %v (root هستی؟)", target, err)
+			errf("write %s: %v (are you root?)", target, err)
 			return 1
 		}
 	}
@@ -72,27 +72,27 @@ func cmdInstall(args []string) int {
 	unit := fmt.Sprintf(systemdUnitTmpl, role, target, role)
 	unitPath := fmt.Sprintf("/etc/systemd/system/silent-%s.service", role)
 	if err := os.WriteFile(unitPath, []byte(unit), 0o644); err != nil {
-		errf("نوشتن unit: %v", err)
+		errf("write unit: %v", err)
 		return 1
 	}
 	if code, err := runShell("systemctl daemon-reload"); err != nil || code != 0 {
-		errf("systemctl daemon-reload ناموفق: %v", err)
+		errf("systemctl daemon-reload failed: %v", err)
 		return 1
 	}
 	if code, err := runShell(fmt.Sprintf("systemctl enable --now silent-%s", role)); err != nil || code != 0 {
-		errf("فعال‌سازی سرویس ناموفق: %v", err)
+		errf("service enable failed: %v", err)
 		return 1
 	}
-	okf("سرویس silent-%s نصب و فعال شد", role)
-	tipf("وضعیت:  systemctl status silent-%s", role)
-	tipf("لاگ:    journalctl -u silent-%s -f", role)
+	okf("service silent-%s installed and enabled", role)
+	tipf("Status:  systemctl status silent-%s", role)
+	tipf("Logs:    journalctl -u silent-%s -f", role)
 	return 0
 }
 
 // cmdUninstall removes the service and (optionally) the configuration.
 func cmdUninstall(args []string) int {
 	if runtime.GOOS == "windows" {
-		fmt.Println(`روی ویندوز:  nssm remove SilentTunnel confirm  یا  schtasks /Delete /TN SilentTunnel /F`)
+		fmt.Println(`On Windows:  nssm remove SilentTunnel confirm  or  schtasks /Delete /TN SilentTunnel /F`)
 		return 0
 	}
 	removed := false
@@ -104,7 +104,7 @@ func cmdUninstall(args []string) int {
 		_, _ = runShell(fmt.Sprintf("systemctl disable --now silent-%s", role))
 		if err := os.Remove(unit); err == nil {
 			removed = true
-			okf("سرویس silent-%s حذف شد", role)
+			okf("service silent-%s removed", role)
 		}
 	}
 	if removed {
@@ -116,11 +116,11 @@ func cmdUninstall(args []string) int {
 	if confirmWipe() {
 		for _, p := range []string{config.HubPath(), config.NodePath()} {
 			if err := os.Remove(p); err == nil {
-				okf("حذف شد: %s", p)
+				okf("removed: %s", p)
 			}
 		}
 	}
-	tipf("تمام شد")
+	tipf("done")
 	return 0
 }
 
@@ -128,7 +128,7 @@ func confirmWipe() bool {
 	if !isTTY() {
 		return false
 	}
-	v, err := Confirm("فایل‌های کانفیگ و توکن هم حذف شوند؟", false)
+	v, err := Confirm("Also remove the config files and the token?", false)
 	return err == nil && v
 }
 

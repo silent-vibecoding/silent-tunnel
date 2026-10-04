@@ -57,12 +57,12 @@ func cmdStatus() int {
 	path := config.StatusPath()
 	b, err := os.ReadFile(path)
 	if err != nil {
-		errf("فایل وضعیت پیدا نشد (%s) — دیمن احتمالاً اجرا نیست", path)
+		errf("status file not found (%s) — the daemon is probably not running", path)
 		return 1
 	}
 	var st liveStatus
 	if err := json.Unmarshal(b, &st); err != nil {
-		errf("فایل وضعیت خراب است: %v", err)
+		errf("status file is corrupt: %v", err)
 		return 1
 	}
 	fresh := false
@@ -70,24 +70,24 @@ func cmdStatus() int {
 		fresh = time.Since(fi.ModTime()) < 15*time.Second
 	}
 
-	role := "هاب (ایران)"
+	role := "hub (Iran)"
 	if st.Role == "node" {
-		role = "نود (خارج)"
+		role = "node (abroad)"
 	}
 	fmt.Println()
 	fmt.Printf("  %s  Silent Tunnel — %s\n", info("●"), role)
 	if !fresh {
-		fmt.Printf("  %s\n", warn("دیمن در حال اجرا به نظر نمی‌رسد (وضعیت قدیمی است)"))
+		fmt.Printf("  %s\n", warn("the daemon does not appear to be running (status is stale)"))
 	}
 	if started, err := time.Parse(time.RFC3339, st.StartedAt); err == nil {
-		fmt.Printf("  آپ‌تایم:      %s\n", humanDuration(time.Since(started)))
+		fmt.Printf("  Uptime:       %s\n", humanDuration(time.Since(started)))
 	}
-	fmt.Printf("  اتصالات تونل: %d\n", st.Sessions)
-	fmt.Printf("  اتصال‌های باز: %d  (مجموع: %d)\n", st.StreamsOpen, st.TotalStreams)
-	fmt.Printf("  دانلود/آپلود: %s / %s\n", humanBytes(st.BytesIn), humanBytes(st.BytesOut))
-	fmt.Printf("  ری‌کانکت‌ها:   %d\n", st.Reconnects)
+	fmt.Printf("  Tunnel sessions: %d\n", st.Sessions)
+	fmt.Printf("  Open streams:    %d  (total: %d)\n", st.StreamsOpen, st.TotalStreams)
+	fmt.Printf("  Down/Up:      %s / %s\n", humanBytes(st.BytesIn), humanBytes(st.BytesOut))
+	fmt.Printf("  Reconnects:   %d\n", st.Reconnects)
 	if st.LastPeer != "" {
-		fmt.Printf("  آخرین همتا:   %s\n", st.LastPeer)
+		fmt.Printf("  Last peer:    %s\n", st.LastPeer)
 	}
 	fmt.Println()
 	return 0

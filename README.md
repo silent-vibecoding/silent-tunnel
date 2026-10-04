@@ -1,153 +1,170 @@
-<div dir="rtl">
-
 # Silent Tunnel 🔇
 
-<p align="center">
-  <b>تونل اختصاصی ایران ⇄ خارج</b> — استتار TLS با SNI جعلی، رمز ChaCha20-Poly1305 داخلی،
-  مالتی‌پلکس و استخر اتصال، با منوی تعاملی و توکن Pairing یک‌خطی.
-</p>
+**A dedicated Iran ⇄ abroad tunnel** — TLS disguise with a fake SNI, an inner
+ChaCha20-Poly1305 encryption layer, connection pooling and multiplexing, an
+interactive TUI and a one-line pairing token.
 
-## ⚡ نصب تک‌خطی
+Silent Tunnel combines the best techniques of
+[RTT](https://github.com/radkesvat/ReverseTlsTunnel),
+[Hedioum](https://github.com/hedioum/Hedioum-Pool-Tunnel),
+[BackPack](https://github.com/AminMGMT/BackPack) and
+[Easy-Mesh](https://github.com/Musixal/Easy-Mesh) into one lightweight,
+transparent and resilient tunnel for the classic "x-ui/3x-ui panel on the
+abroad server" setup.
 
-روی هر VPS (دبیان/اوبونتو) با کاربر root:
+## ⚡ One-line install
+
+On any VPS (Debian/Ubuntu) as root:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/silent-vibecoding/silent-tunnel/main/install.sh)
 ```
 
-اسکریپت باینری مناسب معماری را نصب می‌کند و **منوی تعاملی** را باز می‌کند — روی سرور ایران
-گزینه‌ی ۱ (هاب) و روی سرور خارج گزینه‌ی ۲ (نود) را انتخاب کن. (اگر گیت‌هاب در دسترس نیست:
-باینری `silent-linux-*` را کپی کن، `install -m755 silent-linux-amd64 /usr/local/bin/silent` و اجرای `silent`.)
+The script installs the right binary for your architecture and opens the
+**interactive menu** — pick option 1 (hub) on the Iran server and option 2
+(node) on the abroad server. If GitHub is unreachable from the server, copy a
+`silent-linux-*` binary over manually:
+`install -m755 silent-linux-amd64 /usr/local/bin/silent && silent`.
 
-سایلنت تانل با جمع‌بندی بهترین تکنیک‌های [RTT](https://github.com/radkesvat/ReverseTlsTunnel)،
-[هدیوم](https://github.com/hedioum/Hedioum-Pool-Tunnel)، [BackPack](https://github.com/AminMGMT/BackPack)
-و [Easy-Mesh](https://github.com/Musixal/Easy-Mesh) ساخته شده تا یک تونل سبک، شفاف و مقاوم برای
-سناریوی کلاسیک «پنل x-ui/3x-ui روی سرور خارج» بدهد.
+## How it works
 
 ```
-کاربر ──▶ سرور ایران (hub) ═══ تونل ═══▶ سرور خارج (node) ──▶ x-ui / 3x-ui
-          پورت‌های فوروارد‌شده     TLS+SNI جعلی             سرویس روی 127.0.0.1
+user ──▶ Iran server (hub) ═══ tunnel ═══▶ abroad server (node) ──▶ x-ui / 3x-ui
+         forwarded ports         TLS + fake SNI             service on 127.0.0.1
 ```
 
-- **معکوس:** سرور *خارج* به *ایران* وصل می‌شود؛ سرور خارج هیچ پورت ورودی باز لازم ندارد.
-- **استتار:** اتصال یک TLS واقعی با SNI قابل‌تنظیم (پیش‌فرض `cloudflare.com`) است و ALPN مرورگر را تقلید می‌کند.
-- **رمز داخلی:** بعد از TLS، همه‌چیز داخل قاب‌های ChaCha20-Poly1305 می‌رود که کلیدش با HKDF از
-  توکن ساخته می‌شود — توکن هرگز روی سیم نمی‌رود و حتی با شکستن TLS محتوا رمز می‌ماند.
-- **ضد پروب:** هر کاوشگری که احراز نشود یک صفحه‌ی معمولی `404 Not Found` شبیه nginx می‌گیرد.
-- **استخر اتصال:** به‌طور پیش‌فرض ۳ اتصال موازی با ری‌کانکت خودکار (backoff نمایی + جیتر)؛
-  اتصال کاربرها بین اتصالات سالم می‌چرخد، پس قطعیِ یک اتصال محسوس نیست.
-- **مالتی‌پلکس:** صدها اتصال کاربر روی هر اتصال فیزیکی با [smux](https://github.com/xtaci/smux) و بافر بزرگ برای لینک پرتأخیر.
-- **Pin گواهی:** اثر انگشت SHA-256 گواهی هاب داخل توکن Pairing است؛ تغییر گواهی = قطع اتصال، مثل امنیت SSH.
+- **Reverse:** the *abroad* server dials the *Iran* server — the abroad side
+  needs no open inbound ports at all.
+- **Camouflage:** the connection is a real TLS session with a configurable
+  SNI (default `cloudflare.com`) and a browser-like ALPN.
+- **Inner encryption:** after TLS everything travels in ChaCha20-Poly1305
+  frames whose keys are derived from the token via HKDF — the token never
+  crosses the wire, and the payload stays encrypted even if TLS were broken.
+- **Anti-probe:** any scanner that fails authentication gets a plain
+  nginx-style `404 Not Found` page.
+- **Connection pool:** 3 parallel connections by default with automatic
+  reconnection (exponential backoff + jitter); user connections are spread
+  across healthy sessions, so a single connection dying is not noticeable.
+- **Multiplexing:** hundreds of user connections per physical connection via
+  [smux](https://github.com/xtaci/smux) with large buffers for high-latency links.
+- **Certificate pinning:** the SHA-256 fingerprint of the hub certificate
+  travels inside the pairing token — a changed certificate breaks the
+  connection, like SSH's security model.
 
-## ⚡ راه‌اندازی سریع
+## Quick start
 
-باینری مناسب معماری را از `bin/` بردار (یا با `build.sh` بساز) و روی هر دو سرور بگذار.
+Grab a binary from `bin/` (or build with `./build.sh`) and put it on both servers.
 
-### ۱) سرور ایران (هاب)
+### 1) Iran server (hub)
 
 ```bash
-sudo ./silent            # منو → گزینه‌ی ۱ (هاب)
+sudo ./silent            # menu → option 1 (hub)
 ```
 
-ویزارد می‌پرسد: آی‌پی عمومی، پورت تونل (پیش‌فرض 443)، SNI جعلی و پورت‌هایی که باید به خارج
-فوروارد شوند. در پایان **توکن Pairing** (`st1_...`) را چاپ می‌کند و دستورهای `ufw` را نشان می‌دهد.
+The wizard asks for: public IP, tunnel port (default 443), fake SNI and the
+ports to forward abroad. It prints the **pairing token** (`st1_...`) and the
+`ufw` commands to open the firewall.
 
-معادل غیرتعاملی:
+Non-interactive equivalent:
 
 ```bash
 sudo silent setup-hub --port 443 --sni cloudflare.com --maps 2087,44301
 ```
 
-`--maps` دو شکل می‌پذیرد: `2087,44301` (هم‌نام — مثل حالت multiport در RTT) یا `2087=8443` (نگاشت صریح).
+`--maps` accepts two shapes: `2087,44301` (same-port — like RTT's multiport)
+or `2087=8443` (explicit mapping).
 
-### ۲) سرور خارج (نود)
+### 2) Abroad server (node)
 
 ```bash
-sudo ./silent            # منو → گزینه‌ی ۲ (نود) → توکن را پیست کن
+sudo ./silent            # menu → option 2 (node) → paste the token
 ```
 
-معادل غیرتعاملی:
+Non-interactive equivalent:
 
 ```bash
 sudo silent setup-node --token st1_...
-sudo silent node         # یا گزینه‌ی ۴ منو → نصب سرویس systemd
+sudo silent node         # or menu option 4 → install the systemd service
 ```
 
-### ۳) سرویس همیشگی
+### 3) Always-on service
 
-در منو گزینه‌ی **۴ (نصب سرویس systemd)** را بزن یا:
+Pick **option 4 (install the systemd service)** in the menu, or:
 
 ```bash
-sudo silent install      # سرویس silent-hub یا silent-node را می‌سازد و فعال می‌کند
+sudo silent install      # creates and enables silent-hub or silent-node
 ```
 
-## 🖥 منوی تعاملی
+## 🖥 Interactive menu
 
-اجرای `silent` بدون آرگومان منو را باز می‌کند — همه‌چیز با کلیدهای جهت‌دار:
+Running `silent` with no arguments opens the arrow-key menu — everything
+without memorized commands:
 
 ```
-▸ راه‌اندازی این سرور به‌عنوان هاب (ایران)
-  راه‌اندازی این سرور به‌عنوان نود (خارج)
-  اجرای تونل (بر اساس کانفیگ موجود)
-  نصب سرویس systemd (اجرای خودکار پس از ریبوت)
-  وضعیت زنده
-  تست سلامت (doctor)
-  نمایش توکن Pairing
-  حذف کامل (uninstall)
-  خروج
+▸ Set this server up as the hub (Iran)
+  Set this server up as the node (abroad)
+  Run the tunnel (based on the existing config)
+  Install the systemd service (start on boot)
+  Live status
+  Health check (doctor)
+  Show the pairing token
+  Full removal (uninstall)
+  Exit
 ```
 
-## 🧪 عیب‌یابی و وضعیت
+## 🧪 Troubleshooting & status
 
 ```bash
-silent doctor   # گواهی، پورت‌ها، ساعت سرور، رسیدن به هاب، دست‌دادن کامل
-silent status   # آپ‌تایم، اتصالات سالم، استریم‌های باز، بایت دانلود/آپلود، ری‌کانکت‌ها
-silent token    # نمایش دوباره‌ی توکن Pairing (فقط روی هاب)
+silent doctor   # certificate, ports, server clock, hub reachability, full handshake
+silent status   # uptime, healthy sessions, open streams, down/up bytes, reconnects
+silent token    # print the pairing token again (hub only)
 ```
 
-لاگ سرویس: `journalctl -u silent-hub -f` یا `journalctl -u silent-node -f`
+Service logs: `journalctl -u silent-hub -f` or `journalctl -u silent-node -f`
 
-## 📁 فایل‌ها
+## 📁 Files
 
-| مسیر (لینوکس) | محتوا |
+| Path (Linux) | Content |
 |---|---|
-| `/etc/silent/hub.json` | کانفیگ هاب (ایران) |
-| `/etc/silent/cert.pem`, `cert.key` | گواهی خودامضایی هاب (۱۰ ساله) |
-| `/etc/silent/node.json` | کانفیگ نود (خارج) |
-| `/var/lib/silent/status.json` | وضعیت زنده‌ی دیمن (هر ۵ ثانیه) |
-| `/etc/systemd/system/silent-*.service` | سرویس‌ها |
+| `/etc/silent/hub.json` | hub config (Iran) |
+| `/etc/silent/cert.pem`, `cert.key` | hub self-signed certificate (10 years) |
+| `/etc/silent/node.json` | node config (abroad) |
+| `/var/lib/silent/status.json` | live daemon status (every 5 s) |
+| `/etc/systemd/system/silent-*.service` | services |
 
-روی ویندوز همه‌چیز زیر `%LOCALAPPDATA%\silent` است.
+On Windows everything lives under `%LOCALAPPDATA%\silent`.
 
-## 🔐 امنیت
+## 🔐 Security
 
-- **توکن Pairing مثل کلید خصوصی است** — هر کس توکن را دارد می‌تواند از تونل استفاده کند.
-  لو رفت؟ روی هاب کانفیگ را پاک کن و دوباره `setup-hub` بزن (کلید و گواهی جدید) و توکن جدید را روی نودها بریز.
-- کلیدها با HKDF-SHA256 از توکن + نمک تصادفی هر اتصال مشتق می‌شوند؛ nonceها شمارنده‌ی یک‌طرفه دارند،
-  پس ری‌پلی و تغییر ترتیب قاب‌ها همیشه شکست می‌خورد.
-- پنجره‌ی زمان احراز ±۲ دقیقه است — ساعت هر دو سرور را با NTP هم‌زمان نگه دار (doctor چک می‌کند).
-- ترافیک بین کاربر و پنل end-to-end رمز است (تونل فقط TCP می‌کشد؛ رمزنگاری واقعی با سرویس پشت آن است).
+- **Treat the pairing token like a private key** — anyone holding it can use
+  the tunnel. Leaked? Wipe the hub config, re-run `setup-hub` (new key and
+  certificate) and re-run `setup-node` with the new token.
+- Keys are derived with HKDF-SHA256 from the token plus a random per-connection
+  salt; nonces use a per-direction monotonic counter, so replay and reordering
+  always fail to open.
+- The auth window is ±2 minutes — keep both servers' clocks synced with NTP
+  (`doctor` checks this).
+- The tunnel is a transparent TCP pipe; the real encryption of your traffic is
+  whatever runs behind it (V2Ray, SSH, ...).
 
-## 🏗 ساخت از سورس
+## 🏗 Build from source
 
 ```bash
-git clone <repo> && cd silent-tunnel
-./build.sh        # خروجی: bin/silent-linux-amd64, silent-linux-arm64, silent-windows-amd64.exe
-go test ./...     # تست‌های واحد + تست end-to-end کامل
+git clone https://github.com/silent-vibecoding/silent-tunnel && cd silent-tunnel
+./build.sh        # output: bin/silent-linux-amd64, silent-linux-arm64, silent-windows-amd64.exe
+go test ./...     # unit tests + a full end-to-end test
 ```
 
-فقط Go و [smux](https://github.com/xtaci/smux) و [x/crypto] — بدون وابستگی سنگین.
+Only Go plus [smux](https://github.com/xtaci/smux) and [x/crypto](https://golang.org/x/crypto) — no heavy dependencies.
 
-## 🗺 نقشه‌ی راه
+## 🗺 Roadmap
 
-- [ ] UDP-over-tunnel (برای QUIC/HTTP3 کلاینت‌ها)
-- [ ] استخر چند-استتار (SSH/cPanel/Grafana مثل هدیوم) با چرخش پروتکل
-- [ ] ترنسپورت WSS از روی CDN با هندشیک uTLS کروم (الگوی BackPack)
-- [ ] حالت L3 (تونل کامل IP، الگوی BackPack Direct / EasyTier)
+- [ ] UDP over the tunnel (QUIC/HTTP3 clients)
+- [ ] Multi-mimic connection pool (SSH/cPanel/Grafana, à la Hedioum) with protocol rotation
+- [ ] WSS transport through CDNs with a Chrome uTLS handshake (à la BackPack)
+- [ ] L3 mode (full IP tunnel, à la BackPack Direct / EasyTier)
 
-## 📄 لایسنس
+## 📄 License
 
-MIT — با یادآوری: مسئولیت استفاده بر عهده‌ی خودتان است. این ابزار برای حفظ دسترسی آزاد
-و امن به اینترنت ساخته شده است.
-
-</div>
+MIT — and a reminder: you are responsible for how you use it. This tool is
+built for keeping free and secure access to the internet.

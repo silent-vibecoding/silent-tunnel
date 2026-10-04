@@ -20,38 +20,38 @@ func cmdDoctor(args []string) int {
 	if cfg, err := config.LoadNode(config.NodePath()); err == nil {
 		return doctorNode(cfg)
 	}
-	errf("هیچ کانفیگی پیدا نشد — اول setup-hub یا setup-node را اجرا کن")
+	errf("no config found — run setup-hub or setup-node first")
 	return 1
 }
 
 func doctorHub(cfg *config.Hub) int {
 	fmt.Println()
-	tipf("تست سلامت هاب (ایران)")
+	tipf("Hub (Iran) health check")
 	code := 0
 
 	cert, err := crypto.LoadCert(cfg.Cert, cfg.CertKey)
 	if err != nil {
-		errf("گواهی: %v", err)
+		errf("certificate: %v", err)
 		code = 1
 	} else {
-		okf("گواهی سالم (اثر انگشت %s...)", crypto.Fingerprint(cert)[:16])
+		okf("certificate OK (fingerprint %s...)", crypto.Fingerprint(cert)[:16])
 		if _, err := tokenFor(cfg); err != nil {
-			errf("توکن pairing ساخته نمی‌شود: %v", err)
+			errf("cannot build the pairing token: %v", err)
 			code = 1
 		} else {
-			okf("توکن pairing آماده است (silent token)")
+			okf("pairing token ready (run 'silent token' to print it)")
 		}
 	}
 
 	for _, p := range append([]int{cfg.TLSPort}, cfg.Listen...) {
 		ln, err := net.Listen("tcp", ":"+strconv.Itoa(p))
 		if err != nil {
-			errf("پورت %d آزاد نیست: %v", p, err)
+			errf("port %d is not free: %v", p, err)
 			code = 1
 			continue
 		}
 		_ = ln.Close()
-		okf("پورت %d آزاد است", p)
+		okf("port %d is free", p)
 	}
 
 	if hint := clockCheck(); hint != "" {
@@ -63,25 +63,25 @@ func doctorHub(cfg *config.Hub) int {
 
 func doctorNode(cfg *config.Node) int {
 	fmt.Println()
-	tipf("تست سلامت نود (خارج)")
+	tipf("Node (abroad) health check")
 
 	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
 	conn, err := net.DialTimeout("tcp", addr, 8*time.Second)
 	if err != nil {
-		errf("TCP به هاب %s نمی‌رسد: %v", addr, err)
-		fmt.Printf("  %s\n", warn("چک کن: آی‌پی/پورت درست است؟ فایروال ایران پورت "+strconv.Itoa(cfg.Port)+" را باز دارد؟"))
+		errf("cannot reach the hub over TCP at %s: %v", addr, err)
+		fmt.Printf("  %s\n", warn("Check: is the IP/port correct? Does the Iran firewall allow port "+strconv.Itoa(cfg.Port)+"?"))
 		return 1
 	}
 	_ = conn.Close()
-	okf("TCP به هاب %s وصل شد", addr)
+	okf("TCP connection to the hub %s works", addr)
 
 	if err := node.Probe(cfg); err != nil {
-		errf("دست‌دادن داخلی: %v", err)
-		fmt.Printf("  %s\n", warn("اگر خطا ساعت/زمان بود: هر دو سرور را با NTP هم‌زمان کن (timedatectl set-ntp true)"))
-		fmt.Printf("  %s\n", warn("اگر fingerprint mismatch بود: کانفیگ هاب یا توکن عوض شده — token دوباره بگیر"))
+		errf("inner handshake: %v", err)
+		fmt.Printf("  %s\n", warn("If the error mentions clock skew: sync both servers with NTP (timedatectl set-ntp true)"))
+		fmt.Printf("  %s\n", warn("If it says fingerprint mismatch: the hub config or token changed — run 'silent token' on the hub and re-run setup-node"))
 		return 1
 	}
-	okf("احراز و رمز داخلی سالم است — تونل آماده است")
+	okf("auth and inner encryption OK — the tunnel is ready")
 	fmt.Println()
 	return 0
 }
@@ -112,7 +112,7 @@ func clockCheck() string {
 		skew = -skew
 	}
 	if skew > 60*time.Second {
-		return fmt.Sprintf("ساعت این سرور با مرجع جهانی %.0f ثانیه اختلاف دارد — با timedatectl set-ntp true هم‌زمانش کن", skew.Seconds())
+		return fmt.Sprintf("this server's clock differs from the global reference by %.0f seconds — sync it with timedatectl set-ntp true", skew.Seconds())
 	}
 	return ""
 }

@@ -61,7 +61,7 @@ func AskInt(label string, def, min, max int) (int, error) {
 		if convErr == nil && n >= min && n <= max {
 			return n, nil
 		}
-		errf("یک عدد بین %d و %d وارد کن", min, max)
+		errf("enter a number between %d and %d", min, max)
 	}
 }
 
@@ -75,7 +75,7 @@ func Confirm(label string, def bool) (bool, error) {
 // uiErr normalizes the survey abort error (Ctrl+C / EOF).
 func uiErr(err error) error {
 	if err == terminal.InterruptErr {
-		return fmt.Errorf("لغو شد")
+		return fmt.Errorf("cancelled")
 	}
 	return err
 }

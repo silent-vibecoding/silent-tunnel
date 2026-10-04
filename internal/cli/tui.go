@@ -33,19 +33,19 @@ func tuiMain() int {
 	}
 
 	options := []string{
-		"راه‌اندازی این سرور به‌عنوان هاب (ایران)",
-		"راه‌اندازی این سرور به‌عنوان نود (خارج)",
-		"اجرای تونل (بر اساس کانفیگ موجود)",
-		"نصب سرویس systemd (اجرای خودکار پس از ریبوت)",
-		"وضعیت زنده",
-		"تست سلامت (doctor)",
-		"نمایش توکن Pairing",
-		"حذف کامل (uninstall)",
-		"خروج",
+		"Set this server up as the hub (Iran)",
+		"Set this server up as the node (abroad)",
+		"Run the tunnel (based on the existing config)",
+		"Install the systemd service (start on boot)",
+		"Live status",
+		"Health check (doctor)",
+		"Show the pairing token",
+		"Full removal (uninstall)",
+		"Exit",
 	}
 
 	for {
-		idx, err := Select("یک گزینه را انتخاب کن:", options)
+		idx, err := Select("Choose an option:", options)
 		if err != nil {
 			fmt.Println()
 			return 0
@@ -82,7 +82,7 @@ func runStep(fn func() int) {
 }
 
 func pause() {
-	if _, err := Ask(subtle("Enter بزن تا به منو برگردی"), ""); err != nil {
+	if _, err := Ask(subtle("Press Enter to return to the menu"), ""); err != nil {
 		os.Exit(0)
 	}
 }
@@ -91,7 +91,7 @@ func pause() {
 func runTunnel() int {
 	role, _ := detectRole()
 	if role == "" {
-		errf("هنوز کانفیگی ساخته نشده — اول گزینه‌ی ۱ یا ۲ را اجرا کن")
+		errf("no config yet — run option 1 or 2 first")
 		return 1
 	}
 	return runDaemon(role, nil)
@@ -114,7 +114,7 @@ func runDaemon(role string, args []string) int {
 		}
 		cfg, err := config.LoadHub(path)
 		if err != nil {
-			errf("کانفیگ هاب (%s): %v", filepath.Base(path), err)
+			errf("hub config (%s): %v", filepath.Base(path), err)
 			return 1
 		}
 		h, err := newHub(cfg)
@@ -122,12 +122,12 @@ func runDaemon(role string, args []string) int {
 			errf("%v", err)
 			return 1
 		}
-		okf("هاب در حال اجرا — Ctrl+C برای توقف")
+		okf("hub running — press Ctrl+C to stop")
 		if err := h.Run(ctx); err != nil {
 			errf("%v", err)
 			return 1
 		}
-		okf("هاب متوقف شد")
+		okf("hub stopped")
 		return 0
 	case "node":
 		if path == "" {
@@ -135,7 +135,7 @@ func runDaemon(role string, args []string) int {
 		}
 		cfg, err := config.LoadNode(path)
 		if err != nil {
-			errf("کانفیگ نود (%s): %v", filepath.Base(path), err)
+			errf("node config (%s): %v", filepath.Base(path), err)
 			return 1
 		}
 		n, err := newNode(cfg)
@@ -143,12 +143,12 @@ func runDaemon(role string, args []string) int {
 			errf("%v", err)
 			return 1
 		}
-		okf("نود در حال اجرا — Ctrl+C برای توقف")
+		okf("node running — press Ctrl+C to stop")
 		if err := n.Run(ctx); err != nil {
 			errf("%v", err)
 			return 1
 		}
-		okf("نود متوقف شد")
+		okf("node stopped")
 		return 0
 	default:
 		usage()

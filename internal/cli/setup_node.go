@@ -10,7 +10,7 @@ import (
 // cmdSetupNode writes the abroad-side config from a pairing token.
 func cmdSetupNode(args []string) int {
 	fs := flag.NewFlagSet("setup-node", flag.ContinueOnError)
-	fs.Usage = func() { fmt.Println("استفاده: silent setup-node --token st1_... [--pool 3] [--config path]") }
+	fs.Usage = func() { fmt.Println("usage: silent setup-node --token st1_... [--pool 3] [--config path]") }
 	token := fs.String("token", "", "pairing token printed by setup-hub")
 	pool := fs.Int("pool", 3, "number of pooled tunnel connections (1-16)")
 	conf := fs.String("config", "", "config path (default per-OS)")
@@ -36,22 +36,22 @@ func cmdSetupNode(args []string) int {
 		path = config.NodePath()
 	}
 	if err := config.Save(path, cfg); err != nil {
-		errf("ذخیره‌ی کانفیگ: %v", err)
+		errf("save config: %v", err)
 		return 1
 	}
 
 	fmt.Println()
-	okf("نود روی %s ساخته شد (%s)", path, subtle("خارج"))
-	fmt.Printf("  هاب: %s:%d    SNI: %s    استخر: %d اتصال\n", p.Host, p.Port, p.SNI, *pool)
+	okf("node created at %s (%s)", path, subtle("abroad"))
+	fmt.Printf("  Hub: %s:%d    SNI: %s    pool: %d connections\n", p.Host, p.Port, p.SNI, *pool)
 	if len(p.Maps) > 0 {
 		for _, m := range p.Maps {
-			fmt.Printf("  نگاشت: ایران:%d → این‌جا:%d\n", m[0], m[1])
+			fmt.Printf("  Mapping: iran:%d -> here:%d\n", m[0], m[1])
 		}
 	} else {
-		tipf("حالت هم‌نام: سرویس‌ها باید روی همان پورت‌های ایران، روی 127.0.0.1 بالا باشند")
+		tipf("Same-port mode: your services must listen on 127.0.0.1 on the same ports as the Iran side")
 	}
 	fmt.Println()
-	tipf("تست:  sudo silent doctor")
-	tipf("اجرا:  sudo silent node   (یا silent → گزینه‌ی install برای سرویس systemd)")
+	tipf("Test:  sudo silent doctor")
+	tipf("Run:  sudo silent node   (or 'silent install' for the systemd service)")
 	return 0
 }
