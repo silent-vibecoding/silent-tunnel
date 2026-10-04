@@ -9,7 +9,7 @@
 #   install -m755 silent-linux-amd64 /usr/local/bin/silent && silent
 set -euo pipefail
 
-REPO_URL="${SILENT_REPO:-https://github.com/YOUR_USER/silent-tunnel}"
+REPO_URL="${SILENT_REPO:-https://github.com/silent-vibecoding/silent-tunnel}"
 PREFIX="/usr/local/bin"
 
 if [ "$(id -u)" -ne 0 ]; then

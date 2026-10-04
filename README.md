@@ -7,6 +7,18 @@
   مالتی‌پلکس و استخر اتصال، با منوی تعاملی و توکن Pairing یک‌خطی.
 </p>
 
+## ⚡ نصب تک‌خطی
+
+روی هر VPS (دبیان/اوبونتو) با کاربر root:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/silent-vibecoding/silent-tunnel/main/install.sh)
+```
+
+اسکریپت باینری مناسب معماری را نصب می‌کند و **منوی تعاملی** را باز می‌کند — روی سرور ایران
+گزینه‌ی ۱ (هاب) و روی سرور خارج گزینه‌ی ۲ (نود) را انتخاب کن. (اگر گیت‌هاب در دسترس نیست:
+باینری `silent-linux-*` را کپی کن، `install -m755 silent-linux-amd64 /usr/local/bin/silent` و اجرای `silent`.)
+
 سایلنت تانل با جمع‌بندی بهترین تکنیک‌های [RTT](https://github.com/radkesvat/ReverseTlsTunnel)،
 [هدیوم](https://github.com/hedioum/Hedioum-Pool-Tunnel)، [BackPack](https://github.com/AminMGMT/BackPack)
 و [Easy-Mesh](https://github.com/Musixal/Easy-Mesh) ساخته شده تا یک تونل سبک، شفاف و مقاوم برای
