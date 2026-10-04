@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net"
+	"sort"
 	"sync"
 	"time"
 
@@ -16,15 +18,24 @@ import (
 
 	"silenttunnel/internal/config"
 	"silenttunnel/internal/crypto"
+	"silenttunnel/internal/firewall"
 	"silenttunnel/internal/proto"
 	"silenttunnel/internal/relay"
 	"silenttunnel/internal/state"
 )
 
-const maxSessions = 16
+const (
+	maxSessions    = 16
+	maxDynamicPort = 64
+)
 
 // Hub is the Iran-side server. Nodes dial its TLS port; users connect to
 // the forwarded ports and are relayed through the tunnel.
+//
+// Forwarded ports come from two sources: static entries in the hub config
+// (legacy/advanced) and — the default — the port list the node announces
+// over a control stream right after connecting. Announced ports open on
+// this server with the same numbers and close when the last session drops.
 type Hub struct {
 	// StatusPath overrides where live statistics are written (tests and
 	// containers); empty means the platform default.
@@ -37,6 +48,9 @@ type Hub struct {
 	mu       sync.Mutex
 	sessions []*session
 	rr       int
+
+	dynMu       sync.Mutex
+	dynListener map[int]net.Listener
 }
 
 type session struct {
@@ -56,13 +70,11 @@ func New(cfg *config.Hub) (*Hub, error) {
 		return nil, fmt.Errorf("load certificate: %w", err)
 	}
 	return &Hub{
-		cfg:    cfg,
-		secret: secret,
-		tlsConf: &tls.Config{
-			Certificates: []tls.Certificate{cert},
-			MinVersion:   tls.VersionTLS12,
-		},
-		st: state.New("hub"),
+		cfg:         cfg,
+		secret:      secret,
+		tlsConf:     &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
+		st:          state.New("hub"),
+		dynListener: map[int]net.Listener{},
 	}, nil
 }
 
@@ -76,7 +88,7 @@ func (h *Hub) Run(ctx context.Context) error {
 	}
 	go h.st.WriteLoop(statusPath, 5*time.Second, stop)
 
-	// User-facing forwarded ports.
+	// Static forwarded ports (optional — usually forwarding is dynamic).
 	for _, p := range h.listenPorts() {
 		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", p))
 		if err != nil {
@@ -84,7 +96,11 @@ func (h *Hub) Run(ctx context.Context) error {
 		}
 		go h.serveForward(ctx, ln, p)
 		log.Printf("forwarding :%d -> node:%d", p, h.cfg.RemoteFor(p))
+		openFirewall(p)
 	}
+	// The node dial port must be reachable too.
+	openFirewall(h.cfg.TLSPort)
+	h.st.SetForwarded(h.listenPorts())
 
 	tlsLn, err := net.Listen("tcp", fmt.Sprintf(":%d", h.cfg.TLSPort))
 	if err != nil {
@@ -97,6 +113,7 @@ func (h *Hub) Run(ctx context.Context) error {
 		<-ctx.Done()
 		_ = ln.Close()
 		h.closeSessions()
+		h.closeDynamic()
 	}()
 
 	for {
@@ -169,6 +186,9 @@ func (h *Hub) handleNode(conn net.Conn) {
 		h.st.Sessions.Store(int64(h.count()))
 		_ = sess.Close()
 		log.Printf("node disconnected %s (sessions=%d)", s.addr, h.count())
+		if h.count() == 0 {
+			h.closeDynamic() // nobody to serve those ports anymore
+		}
 	}()
 
 	for {
@@ -176,8 +196,127 @@ func (h *Hub) handleNode(conn net.Conn) {
 		if err != nil {
 			return
 		}
-		_ = stream.Close() // hub never accepts inbound streams; keep sessions symmetric
+		go h.handleInbound(stream)
 	}
+}
+
+// handleInbound serves node-opened streams. Only control announcements are
+// expected; anything else is closed.
+func (h *Hub) handleInbound(stream *smux.Stream) {
+	defer stream.Close()
+	_ = stream.SetDeadline(time.Now().Add(10 * time.Second))
+	var hdr [2]byte
+	if _, err := io.ReadFull(stream, hdr[:]); err != nil {
+		return
+	}
+	if binary.BigEndian.Uint16(hdr[:]) != 0 {
+		return // data streams are opened by the hub, not the node
+	}
+	var l [2]byte
+	if _, err := io.ReadFull(stream, l[:]); err != nil {
+		return
+	}
+	n := int(binary.BigEndian.Uint16(l[:]))
+	if n > 4096 {
+		return
+	}
+	payload := make([]byte, n)
+	if _, err := io.ReadFull(stream, payload); err != nil {
+		return
+	}
+	var ann struct {
+		Ports []int `json:"ports"`
+	}
+	if err := json.Unmarshal(payload, &ann); err != nil {
+		return
+	}
+	h.reconcileDynamic(ann.Ports)
+}
+
+// reconcileDynamic syncs the announced ports: opens listeners for new ones,
+// closes removed ones and refreshes the status file.
+func (h *Hub) reconcileDynamic(ports []int) {
+	want := map[int]bool{}
+	for _, p := range ports {
+		if p >= 1 && p <= 65535 && len(want) < maxDynamicPort {
+			want[p] = true
+		}
+	}
+
+	h.dynMu.Lock()
+	defer h.dynMu.Unlock()
+	for p, ln := range h.dynListener {
+		if !want[p] {
+			_ = ln.Close()
+			delete(h.dynListener, p)
+			log.Printf("forward removed :%d", p)
+		}
+	}
+	for p := range want {
+		if _, ok := h.dynListener[p]; ok {
+			continue
+		}
+		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", p))
+		if err != nil {
+			log.Printf("forward :%d listen: %v", p, err)
+			continue
+		}
+		h.dynListener[p] = ln
+		log.Printf("forwarding (announced by node) :%d", p)
+		openFirewall(p)
+		go h.serveDynamic(ln, p)
+	}
+	h.st.SetForwarded(h.allForwardedLocked())
+}
+
+// openFirewall best-effort allows the port through the local firewall
+// (ufw/firewalld); it logs the outcome.
+func openFirewall(port int) {
+	go func() {
+		res := firewall.OpenTCPPort(port)
+		if res.Note != "" {
+			log.Printf("firewall: %s", res.Note)
+		}
+	}()
+}
+
+func (h *Hub) serveDynamic(ln net.Listener, port int) {
+	remote := h.cfg.RemoteFor(port)
+	for {
+		user, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		go h.forwardConn(user, remote)
+	}
+}
+
+func (h *Hub) closeDynamic() {
+	h.dynMu.Lock()
+	defer h.dynMu.Unlock()
+	for p, ln := range h.dynListener {
+		_ = ln.Close()
+		delete(h.dynListener, p)
+	}
+	h.st.SetForwarded(h.listenPorts())
+}
+
+// allForwardedLocked unions static and dynamic ports for the status file.
+// Caller holds dynMu.
+func (h *Hub) allForwardedLocked() []int {
+	seen := map[int]bool{}
+	var out []int
+	for p := range h.dynListener {
+		seen[p] = true
+		out = append(out, p)
+	}
+	for _, p := range h.listenPorts() {
+		if !seen[p] {
+			out = append(out, p)
+		}
+	}
+	sort.Ints(out)
+	return out
 }
 
 func (h *Hub) register(s *session) bool {
@@ -228,8 +367,8 @@ func (h *Hub) pick() *session {
 	}
 }
 
-// serveForward accepts one user connection per forwarded port and opens a
-// stream for it on a healthy tunnel session.
+// serveForward accepts one user connection per static forwarded port and
+// opens a stream for it on a healthy tunnel session.
 func (h *Hub) serveForward(ctx context.Context, ln net.Listener, port int) {
 	go func() {
 		<-ctx.Done()

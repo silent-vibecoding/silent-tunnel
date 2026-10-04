@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -23,8 +24,10 @@ type State struct {
 	Out        atomic.Uint64 // bytes sent into the tunnel
 	Reconnects atomic.Uint64 // successful (re)connects
 
-	peer    atomic.Value
-	started time.Time
+	peer      atomic.Value
+	started   time.Time
+	fmu       sync.Mutex
+	forwarded []int
 }
 
 func New(role string) *State {
@@ -37,6 +40,20 @@ func (s *State) SetPeer(addr string) { s.peer.Store(addr) }
 // Peer returns the last seen peer address ("" when none).
 func (s *State) Peer() string { v, _ := s.peer.Load().(string); return v }
 
+// SetForwarded records the currently forwarded port list.
+func (s *State) SetForwarded(ports []int) {
+	s.fmu.Lock()
+	s.forwarded = append([]int(nil), ports...)
+	s.fmu.Unlock()
+}
+
+// Forwarded returns a copy of the currently forwarded port list.
+func (s *State) Forwarded() []int {
+	s.fmu.Lock()
+	defer s.fmu.Unlock()
+	return append([]int(nil), s.forwarded...)
+}
+
 // disk is the JSON shape persisted to the status file.
 type disk struct {
 	Role         string `json:"role"`
@@ -47,6 +64,7 @@ type disk struct {
 	BytesIn      uint64 `json:"bytes_in"`
 	BytesOut     uint64 `json:"bytes_out"`
 	Reconnects   uint64 `json:"reconnects"`
+	Forwarded    []int  `json:"forwarded"`
 	LastPeer     string `json:"last_peer"`
 	UpdatedAt    string `json:"updated_at"`
 }
@@ -61,6 +79,7 @@ func (s *State) snapshot() disk {
 		BytesIn:      s.In.Load(),
 		BytesOut:     s.Out.Load(),
 		Reconnects:   s.Reconnects.Load(),
+		Forwarded:    s.Forwarded(),
 		LastPeer:     s.Peer(),
 		UpdatedAt:    time.Now().Format(time.RFC3339),
 	}

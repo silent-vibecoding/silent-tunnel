@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -113,6 +114,14 @@ func (n *Node) worker(ctx context.Context, idx int, addr string) {
 		n.st.SetPeer(addr)
 		log.Printf("[pool %d] tunnel established (sessions=%d)", idx, n.st.Sessions.Load())
 
+		if len(n.cfg.Ports) > 0 {
+			if err := announce(sess, n.cfg.Ports); err != nil {
+				log.Printf("[pool %d] announce ports: %v", idx, err)
+			} else {
+				log.Printf("[pool %d] announced %d forwarded port(s)", idx, len(n.cfg.Ports))
+			}
+		}
+
 		n.serveSession(sess)
 
 		n.st.Sessions.Add(-1)
@@ -147,6 +156,35 @@ func (n *Node) connect(addr string) (*smux.Session, error) {
 		return nil, fmt.Errorf("mux client: %w", err)
 	}
 	return sess, nil
+}
+
+// announce tells the hub which local ports to forward, over a control
+// stream (header 0x0000). The hub opens the same port numbers on itself.
+func announce(sess *smux.Session, ports []int) error {
+	stream, err := sess.OpenStream()
+	if err != nil {
+		return err
+	}
+	defer stream.Close()
+	_ = stream.SetDeadline(time.Now().Add(10 * time.Second))
+
+	payload, err := json.Marshal(struct {
+		Ports []int `json:"ports"`
+	}{ports})
+	if err != nil {
+		return err
+	}
+	var hdr [2]byte // 0x0000 marks the control stream
+	if _, err := stream.Write(hdr[:]); err != nil {
+		return err
+	}
+	var l [2]byte
+	binary.BigEndian.PutUint16(l[:], uint16(len(payload)))
+	if _, err := stream.Write(l[:]); err != nil {
+		return err
+	}
+	_, err = stream.Write(payload)
+	return err
 }
 
 // serveSession accepts hub-opened streams until the session dies. Each

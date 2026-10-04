@@ -19,6 +19,7 @@ type liveStatus struct {
 	BytesIn      uint64 `json:"bytes_in"`
 	BytesOut     uint64 `json:"bytes_out"`
 	Reconnects   uint64 `json:"reconnects"`
+	Forwarded    []int  `json:"forwarded"`
 	LastPeer     string `json:"last_peer"`
 	UpdatedAt    string `json:"updated_at"`
 }
@@ -86,6 +87,9 @@ func cmdStatus() int {
 	fmt.Printf("  Open streams:    %d  (total: %d)\n", st.StreamsOpen, st.TotalStreams)
 	fmt.Printf("  Down/Up:      %s / %s\n", humanBytes(st.BytesIn), humanBytes(st.BytesOut))
 	fmt.Printf("  Reconnects:   %d\n", st.Reconnects)
+	if len(st.Forwarded) > 0 {
+		fmt.Printf("  Forwarded:    %s (same numbers on the Iran server)\n", intsString(st.Forwarded))
+	}
 	if st.LastPeer != "" {
 		fmt.Printf("  Last peer:    %s\n", st.LastPeer)
 	}

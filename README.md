@@ -54,6 +54,7 @@ user ──▶ Iran server (hub) ═══ tunnel ═══▶ abroad server (no
 ## Quick start
 
 Grab a binary from `bin/` (or build with `./build.sh`) and put it on both servers.
+Everything below can be done from the interactive menu with just Enter keys.
 
 ### 1) Iran server (hub)
 
@@ -61,18 +62,15 @@ Grab a binary from `bin/` (or build with `./build.sh`) and put it on both server
 sudo ./silent            # menu → option 1 (hub)
 ```
 
-The wizard asks for: public IP, tunnel port (default 443), fake SNI and the
-ports to forward abroad. It prints the **pairing token** (`st1_...`) and the
-`ufw` commands to open the firewall.
+The wizard asks only for the public IP, the tunnel port (default 443) and the
+fake SNI — accept the defaults and it prints the **pairing token** (`st1_...`)
+and opens its own firewall port automatically.
 
 Non-interactive equivalent:
 
 ```bash
-sudo silent setup-hub --port 443 --sni cloudflare.com --maps 2087,44301
+sudo silent setup-hub --host <public-ip>
 ```
-
-`--maps` accepts two shapes: `2087,44301` (same-port — like RTT's multiport)
-or `2087=8443` (explicit mapping).
 
 ### 2) Abroad server (node)
 
@@ -80,16 +78,21 @@ or `2087=8443` (explicit mapping).
 sudo ./silent            # menu → option 2 (node) → paste the token
 ```
 
+This is where your services live, so the wizard auto-detects every listening
+port on the server (your x-ui panel, inbounds, ...) and you just tick the ones
+to expose. **The same port numbers open on the Iran server automatically** —
+hub firewall included. No port mapping to think about.
+
 Non-interactive equivalent:
 
 ```bash
-sudo silent setup-node --token st1_...
-sudo silent node         # or menu option 4 → install the systemd service
+sudo silent setup-node --token st1_... --ports 2087,44301
 ```
 
 ### 3) Always-on service
 
-Pick **option 4 (install the systemd service)** in the menu, or:
+Both wizards offer to install the systemd service at the end — or pick
+**option 4** in the menu:
 
 ```bash
 sudo silent install      # creates and enables silent-hub or silent-node

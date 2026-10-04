@@ -16,6 +16,7 @@ import (
 
 	"silenttunnel/internal/config"
 	"silenttunnel/internal/crypto"
+	"silenttunnel/internal/firewall"
 )
 
 // cmdSetupHub creates the Iran-side config, certificate and pairing token.
@@ -26,24 +27,24 @@ func cmdSetupHub(args []string) int {
 	host := fs.String("host", "", "public IP or domain of this server")
 	port := fs.Int("port", 0, "TLS port the node dials (default 443)")
 	sni := fs.String("sni", "", "fake SNI shown to DPI (default cloudflare.com)")
-	maps := fs.String("maps", "", "forwarded ports: 2087,44301 (same-port) or 2087=8443,... (mapped)")
+	maps := fs.String("maps", "", "static forwarded ports (optional — by default the node announces its ports)")
 	conf := fs.String("config", "", "config path (default per-OS)")
 	if err := fs.Parse(args); err != nil {
 		return 1
 	}
 
 	// Fill what the flags left out — from the wizard when possible.
-	if *host == "" || *port == 0 || *sni == "" || *maps == "" {
+	if *host == "" || *port == 0 || *sni == "" {
 		if !isTTY() {
 			fs.Usage()
 			return 1
 		}
-		h, p, s, m, err := hubWizard(*host, *port, *sni, *maps)
+		h, p, s, err := hubWizard(*host, *port, *sni)
 		if err != nil {
 			errf("wizard cancelled: %v", err)
 			return 1
 		}
-		*host, *port, *sni, *maps = h, p, s, m
+		*host, *port, *sni = h, p, s
 	}
 	if *port == 0 {
 		*port = 443
@@ -54,12 +55,6 @@ func cmdSetupHub(args []string) int {
 	if *host == "" {
 		*host = detectLocalIP()
 		tipf("could not detect the public IP; using the local IP %s — fix it in the config later", *host)
-	}
-
-	listen, mapping, err := parsePorts(*maps)
-	if err != nil {
-		errf("%v", err)
-		return 1
 	}
 
 	key := make([]byte, 32)
@@ -95,10 +90,19 @@ func cmdSetupHub(args []string) int {
 		Cert:    certPath,
 		CertKey: keyPath,
 	}
-	if mapping != nil {
-		cfg.Maps = mapping
-	} else {
-		cfg.Listen = listen
+	// Static forwarding is the legacy/advanced path; by default the hub
+	// forwards whatever the node announces.
+	if *maps != "" {
+		listen, mapping, err := parsePorts(*maps)
+		if err != nil {
+			errf("%v", err)
+			return 1
+		}
+		if mapping != nil {
+			cfg.Maps = mapping
+		} else {
+			cfg.Listen = listen
+		}
 	}
 
 	path := *conf
@@ -119,27 +123,27 @@ func cmdSetupHub(args []string) int {
 	fmt.Println()
 	okf("hub created at %s (%s)", path, subtle("Iran"))
 	fmt.Printf("  Tunnel port: %d    SNI: %s\n", cfg.TLSPort, cfg.SNI)
-	if len(cfg.Maps) > 0 {
-		for _, m := range cfg.Maps {
-			fmt.Printf("  Forward: :%d -> node:%d\n", m[0], m[1])
-		}
+
+	// Open the tunnel port in the local firewall right away.
+	res := firewall.OpenTCPPort(cfg.TLSPort)
+	if res.Opened {
+		okf("firewall: %s", res.Note)
 	} else {
-		fmt.Printf("  Forward (same-port): %s\n", intsString(cfg.Listen))
+		fmt.Printf("  %s\n", warn(res.Note))
 	}
+
 	fmt.Println()
-	tipf("Pairing token — paste it into the wizard or 'setup-node' on the abroad server:")
+	tipf("Pairing token — run 'silent' on the abroad server, pick option 2, and paste this:")
 	fmt.Println()
 	fmt.Println(colorToken(token))
 	fmt.Println()
-	tipf("Open these ports in the firewall:")
-	for _, p := range append([]int{cfg.TLSPort}, listen...) {
-		fmt.Printf("    sudo ufw allow %d/tcp\n", p)
-	}
-	tipf("Run:  sudo silent hub   (or 'silent install' for the systemd service)")
+	tipf("Port forwarding is automatic: the node announces its service ports on connect and this server opens the same ports (firewall included).")
+
+	maybeInstallService()
 	return 0
 }
 
-func hubWizard(host string, port int, sni, maps string) (string, int, string, string, error) {
+func hubWizard(host string, port int, sni string) (string, int, string, error) {
 	fmt.Println()
 	tipf("Hub (Iran) setup wizard")
 	if host == "" {
@@ -149,32 +153,37 @@ func hubWizard(host string, port int, sni, maps string) (string, int, string, st
 		}
 		h, err := Ask("Public IP or domain of this server", detected)
 		if err != nil {
-			return "", 0, "", "", uiErr(err)
+			return "", 0, "", uiErr(err)
 		}
 		host = h
 	}
 	if port == 0 {
-		p, err := AskInt("TLS port for the node to dial", 443, 1, 65535)
+		p, err := AskInt("Tunnel port for the abroad server to connect to", 443, 1, 65535)
 		if err != nil {
-			return "", 0, "", "", uiErr(err)
+			return "", 0, "", uiErr(err)
 		}
 		port = p
 	}
 	if sni == "" {
 		s, err := Ask("Fake SNI (the domain DPI will see)", "cloudflare.com")
 		if err != nil {
-			return "", 0, "", "", uiErr(err)
+			return "", 0, "", uiErr(err)
 		}
 		sni = s
 	}
-	if maps == "" {
-		m, err := Ask("Ports to forward, comma-separated (e.g. 44301,2087) — or mapped like 44301=8443", "44301")
-		if err != nil {
-			return "", 0, "", "", uiErr(err)
-		}
-		maps = m
+	return host, port, sni, nil
+}
+
+// maybeInstallService offers the systemd installation right after a wizard.
+func maybeInstallService() {
+	if !isTTY() {
+		return
 	}
-	return host, port, sni, maps, nil
+	yes, err := Confirm("Install the systemd service now (start on boot)?", true)
+	if err == nil && yes {
+		fmt.Println()
+		_ = cmdInstall(nil)
+	}
 }
 
 // parsePorts accepts "2087,44301" (identity mapping) or "2087=8443"

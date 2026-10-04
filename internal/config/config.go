@@ -40,6 +40,9 @@ type Node struct {
 	FP      string `json:"fp"`
 	Pool    int    `json:"pool"`
 	Bind    string `json:"bind"`
+	// Ports is the list the node announces to the hub on every connect;
+	// the hub opens the same port numbers and forwards them here.
+	Ports []int `json:"ports"`
 }
 
 const (
@@ -132,13 +135,13 @@ func (h *Hub) validate() error {
 		return errors.New("hub config: invalid tls_port")
 	case h.SNI == "":
 		return errors.New("hub config: sni is empty")
-	case len(h.Listen) == 0 && len(h.Maps) == 0:
-		return errors.New("hub config: no ports to forward")
 	case h.Key == "":
 		return errors.New("hub config: key is empty")
 	case h.Cert == "" || h.CertKey == "":
 		return errors.New("hub config: certificate paths missing")
 	}
+	// Listen/Maps are optional: when absent the hub forwards whatever
+	// ports the node announces over the control stream.
 	if _, err := h.Secret(); err != nil {
 		return err
 	}
@@ -179,6 +182,14 @@ func (n *Node) validate() error {
 		return errors.New("node config: key is empty")
 	case len(n.FP) != 64:
 		return errors.New("node config: malformed certificate fingerprint")
+	}
+	if len(n.Ports) > 64 {
+		return errors.New("node config: too many forwarded ports (max 64)")
+	}
+	for _, p := range n.Ports {
+		if p < 1 || p > 65535 {
+			return fmt.Errorf("node config: invalid forwarded port %d", p)
+		}
 	}
 	if _, err := n.Secret(); err != nil {
 		return err

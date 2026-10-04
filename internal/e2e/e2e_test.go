@@ -207,3 +207,110 @@ func checkHubStatus(t *testing.T, path string) {
 		time.Sleep(500 * time.Millisecond)
 	}
 }
+
+// TestTunnelDynamicAnnouncement covers the automatic port-forwarding path:
+// the hub has no static ports, the node announces its services on connect
+// and the hub opens the same port numbers on itself.
+func TestTunnelDynamicAnnouncement(t *testing.T) {
+	statusPath := filepath.Join(t.TempDir(), "hub-status.json")
+
+	svc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, "DYNAMIC_OK")
+	}))
+	defer svc.Close()
+	svcPort := svc.Listener.Addr().(*net.TCPAddr).Port
+
+	tlsPort := freePort(t)
+	dir := t.TempDir()
+	cert, err := crypto.GenerateSelfSigned("cloudflare.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := crypto.SaveCert(cert, filepath.Join(dir, "cert.pem"), filepath.Join(dir, "key.pem")); err != nil {
+		t.Fatal(err)
+	}
+	secret := bytes.Repeat([]byte{0xAB}, 32)
+
+	hubCfg := &config.Hub{
+		Version: 1,
+		Role:    "hub",
+		Host:    "127.0.0.1",
+		TLSPort: tlsPort,
+		SNI:     "cloudflare.com",
+		Key:     encodeKey(secret),
+		Cert:    filepath.Join(dir, "cert.pem"),
+		CertKey: filepath.Join(dir, "key.pem"),
+		// No Maps/Listen: forwarding is driven by the node's announcement.
+	}
+	h, err := hub.New(hubCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.StatusPath = statusPath
+	hubCtx, stopHub := context.WithCancel(context.Background())
+	defer stopHub()
+	go func() { _ = h.Run(hubCtx) }()
+
+	nodeCfg := &config.Node{
+		Version: 1,
+		Role:    "node",
+		Host:    "127.0.0.1",
+		Port:    tlsPort,
+		SNI:     "cloudflare.com",
+		Key:     encodeKey(secret),
+		FP:      crypto.Fingerprint(cert),
+		Pool:    1,
+		Bind:    "127.0.0.1",
+		Ports:   []int{svcPort},
+	}
+	n, err := node.New(nodeCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodeCtx, stopNode := context.WithCancel(context.Background())
+	defer stopNode()
+	go func() { _ = n.Run(nodeCtx) }()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/", svcPort))
+		if err == nil {
+			b, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if resp.StatusCode == http.StatusOK && string(b) == "DYNAMIC_OK" {
+				break
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("announced port never carried traffic: last err=%v", err)
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+
+	// The hub status file should list the announced port as forwarded.
+	stDeadline := time.Now().Add(10 * time.Second)
+	for {
+		raw, err := os.ReadFile(statusPath)
+		if err == nil {
+			var st struct {
+				Forwarded []int `json:"forwarded"`
+			}
+			if err := json.Unmarshal(raw, &st); err == nil {
+				found := false
+				for _, p := range st.Forwarded {
+					if p == svcPort {
+						found = true
+					}
+				}
+				if found {
+					break
+				}
+			}
+		}
+		if time.Now().After(stDeadline) {
+			t.Fatal("hub status never listed the announced port as forwarded")
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+}

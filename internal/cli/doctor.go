@@ -53,6 +53,9 @@ func doctorHub(cfg *config.Hub) int {
 		_ = ln.Close()
 		okf("port %d is free", p)
 	}
+	if len(cfg.Listen) == 0 && len(cfg.Maps) == 0 {
+		okf("port forwarding is automatic (the node announces its ports on connect)")
+	}
 
 	if hint := clockCheck(); hint != "" {
 		fmt.Printf("  %s\n", warn(hint))
